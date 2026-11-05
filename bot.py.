@@ -1,0 +1,97 @@
+
+import asyncio
+import os
+import logging
+
+from aiogram import Bot, Dispatcher, F
+from aiogram.filters import CommandStart
+from aiogram.types import Message, CallbackQuery
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+logging.basicConfig(level=logging.INFO)
+
+TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = 1305544102
+
+PRODUCTS = {
+    "bounty": "Баунти",
+    "energy": "Энергетик",
+    "chocolate": "Шоколадка"
+}
+
+dp = Dispatcher()
+
+
+def product_keyboard():
+    kb = InlineKeyboardBuilder()
+    for key, name in PRODUCTS.items():
+        kb.button(text=name, callback_data=f"product:{key}")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def quantity_keyboard(key):
+    kb = InlineKeyboardBuilder()
+    for number in [1, 2, 3, 5, 10]:
+        kb.button(
+            text=str(number),
+            callback_data=f"quantity:{key}:{number}"
+        )
+    kb.adjust(3, 2)
+    return kb.as_markup()
+
+
+@dp.message(CommandStart())
+async def start(message: Message):
+    await message.answer(
+        "Добро пожаловать в магазин!\n\nВыберите товар:",
+        reply_markup=product_keyboard()
+    )
+
+
+@dp.callback_query(F.data.startswith("product:"))
+async def choose_product(callback: CallbackQuery):
+    key = callback.data.split(":")[1]
+
+    await callback.message.edit_text(
+        f"Вы выбрали: {PRODUCTS[key]}\n\nВыберите количество:",
+        reply_markup=quantity_keyboard(key)
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("quantity:"))
+async def choose_quantity(callback: CallbackQuery, bot: Bot):
+    _, key, number = callback.data.split(":")
+    user = callback.from_user
+
+    username = f"@{user.username}" if user.username else "не указан"
+
+    order = (
+        "🔔 НОВЫЙ ЗАКАЗ!\n\n"
+        f"Товар: {PRODUCTS[key]}\n"
+        f"Количество: {number} шт.\n"
+        f"Покупатель: {user.full_name}\n"
+        f"Username: {username}\n"
+        f"Telegram ID: {user.id}"
+    )
+
+    await bot.send_message(ADMIN_ID, order)
+
+    await callback.message.edit_text(
+        f"✅ Заказ отправлен!\n\n"
+        f"{PRODUCTS[key]} — {number} шт."
+    )
+    await callback.answer()
+
+
+async def main():
+    if not TOKEN:
+        raise RuntimeError("Не задан BOT_TOKEN в Render")
+
+    bot = Bot(token=TOKEN)
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
